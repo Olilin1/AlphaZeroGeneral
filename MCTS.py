@@ -1,110 +1,99 @@
-from sre_parse import State
+from email import policy
+import enum
 from Game import Game
 import numpy as np
-import math
 
 class Node:
-    def __init__(self, game: Game, args, state, parent=None, action=None):
-        self.game = game
-        self.args = args
+    def __init__(self, args, game: Game, state, parent, action, prior_probability) -> None:
         self.state = state
         self.parent = parent
+        self.game = game
         self.action = action
+        self.args = args
 
-        self.children = []
-        self.expandable_moves = game.get_legal_actions(state)
+        self.total_action_value = 0 #N
+        self.visit_count = 0        #W
+        self.mean_action_value = 0  #Q
+        self.prior_probability = prior_probability #P
 
-        self.visit_count = 0
-        self.value_sum = 0
+        self.children: list[Node] = []
 
-    def is_fully_expanded(self):
-        return np.sum(self.expandable_moves) == 0 and len(self.children) > 0
 
     def select(self):
-        best_child = None
-        best_ucb_score = -np.inf
-
-        for child in self.children: 
-            ucb = self.get_ucb(child)
-            if ucb > best_ucb_score:
-                best_ucb_score = ucb
-                best_child = child
-        return best_child
-
-    def get_ucb(self, child):
-        win_percent = 1 - ((child.value_sum / child.visit_count) + 1) / 2 #This needs to be changed when generalising for more players
-        ucb = win_percent + self.args['c'] * math.sqrt(math.log(self.visit_count) / child.visit_count)
-        return ucb
-
-    def expand(self):
-        move = np.random.choice(np.where(self.expandable_moves == 1)[0])
-        self.expandable_moves[move] = 0
-
-        child_state = self.state.copy()
-        child_state = self.game.get_next_state(child_state, move)
+        if len(self.children) == 0:
+            return self
         
-        child_state = self.game.get_state_from_perspective(child_state, -1)
+        max_util = -np.inf
+        best_child = None
+        action_value_sum = 0
+        for child in self.children:
+            action_value_sum += child.total_action_value
 
-        child = Node(self.game, self.args, child_state, self, move)
-        self.children.append(child)
+        for child in self.children:
+            util = self.args['c_puct'] * child.prior_probability * (np.sqrt(action_value_sum) / (1 + child.total_action_value))
+            util += child.mean_action_value
+            if util > max_util:
+                max_util = util
+                best_child = child
 
-        return child
+        return best_child.select()
 
-    def simulate(self):
-        terminal, value = self.game.is_game_over(self.state)
-        value = -value
+    def expand(self, policy):
+        for idx, probability in enumerate(policy):
+            if probability != 0:
+                child_state = self.state.copy()
+                child_state = self.game.get_next_state(child_state, idx)
+                self.children.append(Node(self.args, self.game, child_state, self, idx, probability))
 
-        if terminal:
-            return value
-
-        rollout_state = self.state.copy()
-        rollout_player = 1
-
-        while True:
-            legal_actions = self.game.get_legal_actions(rollout_state)
-            valid_moves = [i for i, val in enumerate(legal_actions) if val == 1]
-            
-            action = np.random.choice(valid_moves)
-            rollout_state = self.game.get_next_state(rollout_state, action)
-            terminal, value = self.game.is_game_over(rollout_state)
-            if terminal:
-                if rollout_player == -1:
-                    value = -value
-                return value
-
-            rollout_player = self.game.get_current_player(rollout_state)
-
-    def backpropagate(self, value):
-        self.value_sum += value
+    def backup(self, value):
+        player = self.game.get_current_player(self.state)
         self.visit_count += 1
+        self.total_action_value += value[player]
+        self.mean_action_value = self.total_action_value / self.mean_action_value
 
-        if self.parent is not None:
-            self.parent.backpropagate(-value)
+
 
 class MCTS:
-    def __init__(self, game: Game, args):
-        self.game = game
+    def __init__(self, args, game: Game, model) -> None:
         self.args = args
-    
-    def search(self, state):
-        root = Node(self.game, self.args, state)
+        self.game = game
+        self.model = model
 
-        for search in range(self.args['num_searches']):
-            node = root
-            
-            while node.is_fully_expanded():
-                node = node.select()
-
-            terminal, value = self.game.is_game_over(node.state)
-            value = -value
-            if not terminal:
-                node = node.expand()
-                value = node.simulate()
-            node.backpropagate(value)
-
-        action_probailities = np.zeros(self.game.get_action_count())
-        for child in root.children:
-            action_probailities[child.action] = child.visit_count
+    def get_policy(self, state, temperature):
+        root = Node(self.args, self.game, state, None, None, 1)
         
-        action_probailities /= np.sum(action_probailities)
-        return action_probailities
+        for _ in range(self.args["num_searches"]):
+            self.search(root)
+        
+        policy = np.zeros(self.game.get_action_count())
+        for child in root.children:
+            policy[child.action] = child.visit_count
+        
+        if temperature == 0:
+            best = np.argmax(policy)
+            policy = np.zeros(self.game.get_action_count())
+            policy[best] = 1
+        else:
+            policy /= np.sum(policy)
+            policy ** (1 / temperature)
+            policy /= np.sum(policy)
+        
+        return policy
+
+    def search(self, root: Node):
+        node = root.select()
+        terminal, value = self.game.is_game_over(node.state)
+
+        if not terminal:
+            policy, value = self.model(self.game.get_encoded_state(node.state)) #Make this be canonical, and rotate value vector as needed
+            player = self.game.get_current_player(node.state)
+            value = np.roll(value, player)
+            legal_moves = self.game.get_legal_actions(node.state)
+            policy *= legal_moves
+            policy /= np.sum(policy)
+
+            node.expand(policy)
+
+        node.backup(value) 
+        
+        

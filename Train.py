@@ -3,7 +3,6 @@ from typing import Dict
 from Game import Game
 import torch
 from AlphaZero import AlphaZero
-from TorchModel import ResNet
 from importlib import import_module
 
 

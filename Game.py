@@ -6,6 +6,15 @@ class Game:
     def __repr__(self) -> str:
         pass
 
+    def get_number_of_symmetries(self):
+        pass
+
+    def get_symmetrical_state(self, state, symmetry):
+        pass
+
+    def get_number_of_players(self):
+        pass
+
     def get_action_count(self):
         pass
 
@@ -18,7 +27,7 @@ class Game:
     def get_legal_actions(self, state):
         pass
 
-    def is_game_over(self, state):
+    def is_game_over(self, state) -> tuple[bool, list[float]]: #Should return an array specifying the value gained by each player
         pass
 
     def get_canonical_state(self, state):
@@ -28,9 +37,6 @@ class Game:
         pass
 
     def get_current_player(self, state):
-        pass
-
-    def get_state_from_perspective(self, state, player):
         pass
 
     #The following functions SHOULD be implemented by children
