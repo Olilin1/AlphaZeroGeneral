@@ -12,7 +12,7 @@ class Game:
     def get_symmetrical_state(self, state, symmetry):
         pass
 
-    def get_number_of_players(self):
+    def get_number_of_players(self) -> int:
         pass
 
     def get_action_count(self):
@@ -30,10 +30,8 @@ class Game:
     def is_game_over(self, state) -> tuple[bool, list[float]]: #Should return an array specifying the value gained by each player
         pass
 
-    def get_canonical_state(self, state):
-        pass
 
-    def get_encoded_state(self, state):
+    def get_encoded_state(self, state): #Should be from the perspective of the current player
         pass
 
     def get_current_player(self, state):

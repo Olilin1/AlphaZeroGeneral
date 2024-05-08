@@ -1,5 +1,9 @@
+
 from Game import Game
 import numpy as np
+import torch
+
+
 
 class State:
     def __init__(self):
@@ -29,6 +33,7 @@ class State:
 # Furthermore, if the game lasts for 50 * 4 consecutive turns, the game is determined to be over
 # If one person places a pawn in setup, then players will still alternate moves
 
+
 class Towers2P(Game):
     def __init__(self):
         self.rows = 5
@@ -38,6 +43,34 @@ class Towers2P(Game):
     def __repr__(self):
         return "Towers2P"
     
+    def get_number_of_symmetries(self):
+        return 8
+
+    def get_symmetrical_state(self, state: State, symmetry):
+        return state #Forgot about that prev_action needs to change as_well
+        if symmetry <= 3:
+            for _ in range(0, symmetry):
+                state.board_flags = np.rot90(state.board_flags)
+                state.board_pieces = np.rot90(state.board_pieces)
+                state.board_height = np.rot90(state.board_height)
+        elif symmetry == 4:
+            state.board_flags = np.flipud(state.board_flags)
+            state.board_pieces = np.flipud(state.board_pieces)
+            state.board_height = np.flipud(state.board_height)
+        elif symmetry == 5:
+            state.board_flags = np.fliplr(state.board_flags)
+            state.board_pieces = np.fliplr(state.board_pieces)
+            state.board_height = np.fliplr(state.board_height)
+        elif symmetry == 6:
+            state.board_flags = np.rot90(np.flipud(state.board_flags))
+            state.board_pieces = np.rot90(np.flipud(state.board_pieces))
+            state.board_height = np.rot90(np.flipud(state.board_height))
+        elif symmetry == 7:
+            state.board_flags = np.rot90(np.fliplr(state.board_flags))
+            state.board_pieces = np.rot90(np.fliplr(state.board_pieces))
+            state.board_height = np.rot90(np.fliplr(state.board_height))
+        return state
+
     def get_action_count(self):
         return (
             self.squares +      #Build
@@ -53,6 +86,11 @@ class Towers2P(Game):
         return state
 
     def get_next_state(self, state: State, action):
+        legal = self.get_legal_actions(state)
+
+        if(legal[action] != 1):
+            print("Legal_Action_Missmatch! ", action)
+
         state.turn += 1
         if action < self.squares: #Build
             row = action  // self.cols
@@ -61,6 +99,8 @@ class Towers2P(Game):
             state.board_height[row, col] += 1
             state.blocks_left -= 1
         elif action < self.squares * 2: #Spawn
+            if state.setup_phase:
+                state.flags_left[state.current_player-1] -= 1
             if state.start_team == None:
                 state.start_team = state.current_player
             if state.current_player > 2:
@@ -68,6 +108,7 @@ class Towers2P(Game):
             action -= self.squares
             row = action  // self.cols
             col = action % self.cols
+            action += self.squares
 
             state.board_pieces[row, col] = state.current_player
             state.board_flags[row, col] = state.current_player
@@ -76,6 +117,7 @@ class Towers2P(Game):
             action -= self.squares * 2
             direction = action % 4
             square = action // 4
+            action += self.squares * 2
 
             row = square  // self.cols
             col = square % self.cols
@@ -91,6 +133,8 @@ class Towers2P(Game):
             else:
                 col -= 1
 
+            if row == 5 or col == 5:
+                print(action)
             state.prev_move = (row, col)
             if state.board_flags[row, col] != 0:
                 state.flags_left[int(state.board_flags[row, col]-1)] += 1
@@ -203,6 +247,8 @@ class Towers2P(Game):
             if row < 0 or row >= self.rows or col < 0 or col >= self.cols:
                 continue
             
+            if row == 5 or col == 5:
+                print (action)
             
             if state.board_height[orgRow, orgCol] > state.board_height[row, col] or state.board_pieces[row, col] == 0:
                 legal_actions[action] = 1
@@ -210,10 +256,13 @@ class Towers2P(Game):
 
     def compute_winner(self, state: State):
         if state.flags_left[0] + state.flags_left[2] > state.flags_left[1] + state.flags_left[3]:
+            #print("c1")
             return [-1, 1]
         elif state.flags_left[0] + state.flags_left[2] < state.flags_left[1] + state.flags_left[3]:
+           # print("c2")
             return [1, -1]
         else:
+            #print("c3")
             if state.captured_pieces[0] > state.captured_pieces[1]:
                 return [1, -1]
             elif state.captured_pieces[0] < state.captured_pieces[1]:
@@ -223,45 +272,65 @@ class Towers2P(Game):
               
     def is_game_over(self, state: State):
         if np.prod(state.flags_left) == 0 or state.blocks_left == 0 or np.sum(self.get_legal_actions(state)) == 0 or state.turn == 200:
-            return True, self.compute_winner(state)
+            return True, np.array(self.compute_winner(state), dtype=np.float32)
         else:
-            return False, [0, 0]
-
-    def get_canonical_state(self, state: State):
-        pass
+            return False, np.array([0, 0], dtype=np.float32)
         
     def get_encoded_state(self, state: State):
+        first = state.current_player
+        second = first % 4 + 1
+        third = second % 4 + 1
+        fourth = third % 4 + 1
+
+
+        curr_team = (state.current_player - 1) % 2
+        opp_team = (curr_team + 1) % 2
+
+        move_map = np.zeros((self.rows, self.cols))
+        build_map = np.zeros((self.rows, self.cols))
+
+        
+
+        (row, col, ac) = self.format_action(state.prev_action)
+        if state.action_left or state.setup_phase:
+            pass
+        elif ac == "Build":
+            build_map[row, col] = 1
+        elif ac == "Move":
+            if row == 5 or col == 5:
+                print(state.prev_action)
+                print(row, " ", col)
+                print(state.prev_move)
+            move_map[row, col] = 1
+
         map_data = np.stack((
             state.board_flags == 0,
-            state.board_flags == 1,
-            state.board_flags == 2,
-            state.board_flags == 3,
-            state.board_flags == 4,
+            state.board_flags == first,
+            state.board_flags == second,
+            state.board_flags == third,
+            state.board_flags == fourth,
             state.board_pieces == 0,
-            state.board_pieces == 1,
-            state.board_pieces == 2,
-            state.board_pieces == 3,
-            state.board_pieces == 4,
-            state.board_height
-        ))
+            state.board_pieces == first,
+            state.board_pieces == second,
+            state.board_pieces == third,
+            state.board_pieces == fourth,
+            state.board_height,
+            build_map,
+            move_map,
+            np.full((self.rows, self.cols), 0 if state.start_team == None else (state.start_team % 2 == state.current_player % 2)),
+            np.full((self.rows, self.cols), state.turn),
+            np.full((self.rows, self.cols), state.action_left),
+            np.full((self.rows, self.cols), state.pieces_left[first - 1]),
+            np.full((self.rows, self.cols), state.pieces_left[second - 1]),
+            np.full((self.rows, self.cols), state.pieces_left[third - 1]),
+            np.full((self.rows, self.cols), state.pieces_left[fourth - 1]),
+            np.full((self.rows, self.cols), state.captured_pieces[curr_team]),
+            np.full((self.rows, self.cols), state.captured_pieces[opp_team])
+        ), dtype=np.float32) #22 planes. 5 X 5 X 22 network
         
-        tabular_data = np.array([
-            state.blocks_left,
-            state.turn,
-            state.prev_action,
-            state.setup_phase,
-            state.forced_placement,
-            state.action_left,
-            state.start_team == 1,
-            state.start_team == 2,
-            state.start_team == None
-        ])
 
-        tabular_data = np.append(tabular_data, state.pieces_left)
-        tabular_data = np.append(tabular_data, state.flags_left)
-        tabular_data = np.append(tabular_data, state.captured_pieces)
 
-        return (map_data, tabular_data)
+        return torch.tensor(map_data).unsqueeze(0)
         
     def get_current_player(self, state: State):
         return (state.current_player-1) % 2
@@ -273,3 +342,35 @@ class Towers2P(Game):
                 rep += f"({state.board_flags[row, col]}, {state.board_pieces[row, col]}, {state.board_height[row, col]}) "
             rep += "\n"
         return rep
+
+    def format_action(self, action):
+        if action == None:
+            return (0, 0, None)
+        if action < self.squares:
+            row = action // self.cols
+            col = action // self.cols
+            return (row, col, "Build")
+        elif action < self.squares * 2:
+            action -= self.squares
+            row = action // self.cols
+            col = action // self.cols
+            return (row, col, "Spawn")
+        else:
+            action -= self.squares * 2
+            direction = action % 4
+            square = action // 4
+
+            row = square  // self.cols
+            col = square % self.cols
+
+            if direction == 0:
+                row += 1
+            elif direction == 1:
+                row -= 1
+            elif direction == 2:
+                col += 1
+            else:
+                col -= 1
+            
+            return (row, col, "Move")
+
