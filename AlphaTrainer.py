@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import numpy as np
+import multiprocessing
 
 class AlphaTrainer:
     def __init__(self, args, model: nn.Module, optimizer, game: Game):
@@ -12,6 +13,8 @@ class AlphaTrainer:
         self.model = model
         self.optimizer = optimizer
         self.game = game
+
+        self.queue = multiprocessing.Queue()
 
         self.last_loss = 0
         self.loss_arr = []
@@ -30,6 +33,7 @@ class AlphaTrainer:
 
             action_probabilities = mcts.get_policy(temperature) 
 
+
             memory.append([deepcopy(state), action_probabilities])
 
             
@@ -39,10 +43,13 @@ class AlphaTrainer:
             terminal, value = self.game.is_game_over(state)
 
             if terminal:
+
                 for item in memory:
                     item.append(value)
 
-                return memory
+                self.queue.put(memory)
+
+                return
             mcts.take_step(action)
 
     def learn(self, memory):
@@ -55,10 +62,10 @@ class AlphaTrainer:
 
             target_values = np.roll(target_values, -self.game.get_current_player(state))
             
-            measured_probabilities, measured_value = self.model(self.game.get_encoded_state(state))
+            measured_probabilities, measured_value = self.model(self.game.get_encoded_state(state).to(torch.device('cuda')))
 
-            target_probabilities = torch.tensor(target_probabilities).unsqueeze(0)
-            target_values = torch.tensor(target_values).unsqueeze(0)
+            target_probabilities = torch.tensor(target_probabilities).unsqueeze(0).to(torch.device('cuda'))
+            target_values = torch.tensor(target_values).unsqueeze(0).to(torch.device('cuda'))
 
             policy_loss = F.cross_entropy(measured_probabilities, target_probabilities)
             value_loss = F.mse_loss(measured_value, target_values, reduction='mean')
@@ -76,10 +83,27 @@ class AlphaTrainer:
     def train(self):
         memory = []
         self.model.eval()
+        #Yes I am aware that this code is horrible, it will be fixed
+        # for i in range(self.args["num_selfplay_games"]):
+        #     print("Game ", i)
+        p1 = multiprocessing.Process(target=self.selfPlay)
+        # p2 = multiprocessing.Process(target=self.selfPlay)
 
-        for i in range(self.args["num_selfplay_games"]):
-            print("Game ", i)
-            memory += self.selfPlay()
+        # p3 = multiprocessing.Process(target=self.selfPlay)
+        # p4 = multiprocessing.Process(target=self.selfPlay)
+
+        p1.start()
+        # p2.start()
+        # p3.start()
+        # p4.start()
+        memory += self.queue.get()
+        # memory += self.queue.get()
+        # memory += self.queue.get()
+        # memory += self.queue.get()
+        p1.join()
+        # p2.join()
+        # p3.join()
+        # p4.join()
 
         self.model.train()
         self.last_loss = 0

@@ -330,7 +330,7 @@ class Towers2P(Game):
         
 
 
-        return torch.tensor(map_data).unsqueeze(0)
+        return torch.tensor(map_data, device=torch.device('cuda')).unsqueeze(0)
         
     def get_current_player(self, state: State):
         return (state.current_player-1) % 2

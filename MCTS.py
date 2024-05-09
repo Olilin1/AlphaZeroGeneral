@@ -1,7 +1,7 @@
-from email import policy
 from copy import deepcopy
 from Game import Game
 import numpy as np
+import torch
 
 class Node:
     def __init__(self, args, game: Game, state, parent, action, prior_probability) -> None:
@@ -99,9 +99,10 @@ class MCTS:
         terminal, value = self.game.is_game_over(node.state)
 
         if not terminal:
-            policy, value = self.model(self.game.get_encoded_state(node.state))
-            value = value.squeeze(0).detach().numpy()
-            policy = policy.squeeze(0).detach().numpy()
+            enc = self.game.get_encoded_state(node.state)
+            policy, value = self.model(enc)
+            value = value.squeeze(0).detach().cpu().numpy()
+            policy = policy.squeeze(0).detach().cpu().numpy()
             
             player = self.game.get_current_player(node.state)
             value = np.roll(value, player)
