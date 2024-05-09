@@ -1,5 +1,6 @@
 
 from Game import Game
+from copy import copy
 import numpy as np
 import torch
 
@@ -25,7 +26,17 @@ class State:
 
         #Non-commented fields can be represented using an additional 7 layers
         #Or by using some sort of deep network something
+    def copy(self):
+        state = copy(self)
+        state.pieces_left = [i for i in self.pieces_left]
+        state.captured_pieces = [i for i in self.captured_pieces]
+        state.flags_left = [i for i in self.flags_left]
+        
+        state.board_height = copy(self.board_height)
+        state.board_pieces = copy(self.board_pieces)
+        state.board_flags = copy(self.board_flags)
 
+        return state
 
 # In this version of the game you are allowed to capture any pieces.
 # That includes your own pieces of different colors, or even your own pieces
@@ -86,11 +97,6 @@ class Towers2P(Game):
         return state
 
     def get_next_state(self, state: State, action):
-        legal = self.get_legal_actions(state)
-
-        if(legal[action] != 1):
-            print("Legal_Action_Missmatch! ", action)
-
         state.turn += 1
         if action < self.squares: #Build
             row = action  // self.cols
@@ -133,8 +139,7 @@ class Towers2P(Game):
             else:
                 col -= 1
 
-            if row == 5 or col == 5:
-                print(action)
+
             state.prev_move = (row, col)
             if state.board_flags[row, col] != 0:
                 state.flags_left[int(state.board_flags[row, col]-1)] += 1
@@ -247,8 +252,6 @@ class Towers2P(Game):
             if row < 0 or row >= self.rows or col < 0 or col >= self.cols:
                 continue
             
-            if row == 5 or col == 5:
-                print (action)
             
             if state.board_height[orgRow, orgCol] > state.board_height[row, col] or state.board_pieces[row, col] == 0:
                 legal_actions[action] = 1
@@ -297,10 +300,6 @@ class Towers2P(Game):
         elif ac == "Build":
             build_map[row, col] = 1
         elif ac == "Move":
-            if row == 5 or col == 5:
-                print(state.prev_action)
-                print(row, " ", col)
-                print(state.prev_move)
             move_map[row, col] = 1
 
         map_data = np.stack((
@@ -374,3 +373,5 @@ class Towers2P(Game):
             
             return (row, col, "Move")
 
+    def get_state_copy(self, state: State):
+        return state.copy()
