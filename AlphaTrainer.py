@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import multiprocessing
+import time
 
 class AlphaTrainer:
     def __init__(self, args, model: nn.Module, optimizer, game: Game):
@@ -27,7 +28,11 @@ class AlphaTrainer:
         while True:
             temperature = 2 #For now
             turn += 1
-            print("Turn: ", turn)
+            #print("Turn: ", turn)
+            # if turn == 2:
+            #     stime = time.time()
+            # elif turn == 4:
+            #     print((time.time()-stime)/2)
             if turn > self.args["temperature_threshold"]:
                 temperature = 0
 
@@ -86,24 +91,20 @@ class AlphaTrainer:
         #Yes I am aware that this code is horrible, it will be fixed
         # for i in range(self.args["num_selfplay_games"]):
         #     print("Game ", i)
-        p1 = multiprocessing.Process(target=self.selfPlay)
-        # p2 = multiprocessing.Process(target=self.selfPlay)
 
-        # p3 = multiprocessing.Process(target=self.selfPlay)
-        # p4 = multiprocessing.Process(target=self.selfPlay)
+        num_procs = 8
+        procs = [multiprocessing.Process(target=self.selfPlay) for _ in range(0, num_procs)]
 
-        p1.start()
-        # p2.start()
-        # p3.start()
-        # p4.start()
-        memory += self.queue.get()
-        # memory += self.queue.get()
-        # memory += self.queue.get()
-        # memory += self.queue.get()
-        p1.join()
-        # p2.join()
-        # p3.join()
-        # p4.join()
+
+        for proc in procs:
+            proc.start()
+        
+        for _ in range(0, num_procs):
+            memory += self.queue.get()
+
+        for proc in procs:
+            proc.join()
+
 
         self.model.train()
         self.last_loss = 0
