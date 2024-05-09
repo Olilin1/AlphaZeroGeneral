@@ -41,7 +41,7 @@ class Node:
     def expand(self, policy):
         for idx, probability in enumerate(policy):
             if probability != 0:
-                child_state = deepcopy(self.state)
+                child_state = self.game.get_state_copy(self.state)
                 child_state = self.game.get_next_state(child_state, idx)
                 self.children.append(Node(self.args, self.game, child_state, self, idx, probability))
 
