@@ -37,6 +37,9 @@ class Game:
     def get_current_player(self, state):
         pass
 
+    def get_state_copy(self, state):
+        pass
+
     #The following functions SHOULD be implemented by children
     def get_string_representation(self, state) -> str:
         pass
